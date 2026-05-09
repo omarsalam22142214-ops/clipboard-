@@ -48,25 +48,50 @@
             gap: 12px;
             margin-top: 20px;
         }
+        
         .clip-item {
             background-color: #f1f3f5;
             border: 1px solid #e2e6ea;
             border-radius: 10px;
-            padding: 12px;
+            padding: 10px;
             cursor: pointer;
             position: relative;
             transition: 0.2s;
-            height: 80px; 
+            height: 100px; /* كبرناها شوية عشان تشيل الزراير */
             display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
+            flex-direction: column;
         }
         .clip-item:hover {
-            background-color: #e2e6ea;
             transform: translateY(-2px);
             box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         }
+        /* كارت مميز للنصوص المتثبتة */
+        .clip-item.pinned {
+            background-color: #fff3cd;
+            border-color: #ffeeba;
+        }
+
+        /* زراير التحكم جوه الكارت */
+        .card-actions {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding-bottom: 5px;
+        }
+        .card-actions button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 0 5px;
+            color: #555;
+            transition: 0.2s;
+        }
+        .card-actions button:hover { transform: scale(1.2); }
+        .btn-delete:hover { color: #dc3545 !important; }
+        .btn-edit:hover { color: #007bff !important; }
+
         .clip-item p {
             margin: 0;
             font-size: 14px;
@@ -78,27 +103,11 @@
             overflow: hidden;
             word-break: break-word;
             pointer-events: none; 
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        
-        .delete-btn {
-            position: absolute;
-            top: 5px;
-            left: 5px;
-            background-color: rgba(220, 53, 69, 0.8);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            font-size: 12px;
-            line-height: 20px;
-            text-align: center;
-            cursor: pointer;
-            padding: 0;
-            display: none; 
-        }
-        .clip-item:hover .delete-btn { display: block; }
-        .delete-btn:hover { background-color: #dc3545; }
 
         .btn-logout { background-color: #6c757d; margin-top: 30px; }
 
@@ -120,12 +129,7 @@
             opacity: 0;
             transition: opacity 0.3s, bottom 0.3s;
         }
-        #toast.show {
-            visibility: visible;
-            opacity: 1;
-            bottom: 50px;
-        }
-
+        #toast.show { visibility: visible; opacity: 1; bottom: 50px; }
         #app-screen { display: none; }
     </style>
 </head>
@@ -180,13 +184,12 @@
             document.getElementById('current-room-name').innerText = "*".repeat(currentPassword.length);
             document.getElementById('password-input').value = '';
 
-            // صائد أخطاء القراءة
             db.ref('clipboards/' + currentPassword).on('value', (snapshot) => {
                 const data = snapshot.val();
                 localItems = data ? data : []; 
                 renderItems();
             }, (error) => {
-                alert("فيه مشكلة في قراءة البيانات من فايربيز!\nالسبب: " + error.message);
+                alert("فيه مشكلة في قراءة البيانات: " + error.message);
             });
         }
 
@@ -199,16 +202,39 @@
                 return;
             }
 
-            localItems.forEach((itemText, index) => {
+            // تحويل البيانات القديمة وترتيبها (المتثبت الأول، وبعدين الأحدث فالأقدم)
+            let normalizedItems = localItems.map((item, index) => {
+                if (typeof item === 'string') {
+                    return { text: item, pinned: false, originalIndex: index };
+                }
+                return { ...item, originalIndex: index };
+            });
+
+            // فصل المتثبت عن العادي وعكسهم عشان الأحدث يظهر الأول
+            let pinnedItems = normalizedItems.filter(i => i.pinned).reverse();
+            let unpinnedItems = normalizedItems.filter(i => !i.pinned).reverse();
+            
+            // دمجهم تاني (المتثبت فوق)
+            let sortedItems = [...pinnedItems, ...unpinnedItems];
+
+            sortedItems.forEach((item) => {
                 const div = document.createElement('div');
-                div.className = 'clip-item';
-                div.onclick = () => copyItem(index);
+                div.className = `clip-item ${item.pinned ? 'pinned' : ''}`;
+                
+                // الكليك على الكارت نفسه يعمل نسخ
+                div.onclick = () => copyItem(item.originalIndex);
                 
                 div.innerHTML = `
-                    <p>${escapeHTML(itemText)}</p>
-                    <button class="delete-btn" onclick="deleteItem(event, ${index})" title="حذف">✕</button>
+                    <div class="card-actions">
+                        <button class="btn-pin" onclick="togglePin(event, ${item.originalIndex})" title="تثبيت">
+                            ${item.pinned ? '📍' : '📌'}
+                        </button>
+                        <button class="btn-edit" onclick="editItem(event, ${item.originalIndex})" title="تعديل">✏️</button>
+                        <button class="btn-delete" onclick="deleteItem(event, ${item.originalIndex})" title="حذف">🗑️</button>
+                    </div>
+                    <p>${escapeHTML(item.text)}</p>
                 `;
-                container.prepend(div);
+                container.appendChild(div);
             });
         }
 
@@ -217,29 +243,47 @@
             const text = textInput.value.trim();
             if (!text) return;
 
-            localItems.push(text);
+            // بنحفظه كـ Object عشان ندعمه بالتثبيت
+            localItems.push({ text: text, pinned: false });
             
-            // صائد أخطاء الكتابة (الحفظ)
             db.ref('clipboards/' + currentPassword).set(localItems)
-                .then(() => {
-                    // لو الداتا اترفع بنجاح الخانة هتفضى
-                    textInput.value = '';
-                })
+                .then(() => { textInput.value = ''; })
                 .catch((error) => {
-                    // لو فايربيز رفض، هيطلع الرسالة دي
-                    alert("للأسف فايربيز رفض يحفظ! \nالسبب: " + error.message);
-                    
-                    // هنحذف النص من الشاشة قدامك عشان متفتكرش إنه اتحفظ
+                    alert("فايربيز رفض يحفظ! \nالسبب: " + error.message);
                     localItems.pop();
                     renderItems();
                 });
         }
 
-        function copyItem(index) {
-            const textToCopy = localItems[index];
-            navigator.clipboard.writeText(textToCopy).then(() => {
-                showToast();
-            });
+        function togglePin(event, index) {
+            event.stopPropagation(); // عشان الكارت ميعملش نسخ وإنت بتثبت
+            
+            let item = localItems[index];
+            if (typeof item === 'string') {
+                localItems[index] = { text: item, pinned: true };
+            } else {
+                localItems[index].pinned = !localItems[index].pinned;
+            }
+
+            db.ref('clipboards/' + currentPassword).set(localItems);
+        }
+
+        function editItem(event, index) {
+            event.stopPropagation(); // منع النسخ وقت التعديل
+            
+            let item = localItems[index];
+            let currentText = typeof item === 'string' ? item : item.text;
+            
+            let newText = prompt("عدل النص بتاعك:", currentText);
+            
+            if (newText !== null && newText.trim() !== "") {
+                if (typeof item === 'string') {
+                    localItems[index] = { text: newText.trim(), pinned: false };
+                } else {
+                    localItems[index].text = newText.trim();
+                }
+                db.ref('clipboards/' + currentPassword).set(localItems);
+            }
         }
 
         function deleteItem(event, index) {
@@ -248,15 +292,22 @@
                 const itemToDelete = localItems[index];
                 localItems.splice(index, 1);
                 
-                // صائد أخطاء الحذف
                 db.ref('clipboards/' + currentPassword).set(localItems)
                     .catch((error) => {
                         alert("فايربيز رفض الحذف! \nالسبب: " + error.message);
-                        // نرجع العنصر تاني لو الحذف فشل
                         localItems.splice(index, 0, itemToDelete);
                         renderItems();
                     });
             }
+        }
+
+        function copyItem(index) {
+            let item = localItems[index];
+            let textToCopy = typeof item === 'string' ? item : item.text;
+
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                showToast();
+            });
         }
 
         function showToast() {
@@ -281,4 +332,3 @@
     </script>
 </body>
 </html>
-

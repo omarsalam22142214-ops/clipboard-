@@ -42,7 +42,6 @@
         }
         .main-btn:hover { background-color: #0056b3; }
         
-        /* تصميم الحافظة (الكروت) */
         .clipboard-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -57,7 +56,7 @@
             cursor: pointer;
             position: relative;
             transition: 0.2s;
-            height: 80px; /* ارتفاع ثابت عشان يبقوا متساويين */
+            height: 80px; 
             display: flex;
             align-items: center;
             justify-content: center;
@@ -73,16 +72,14 @@
             font-size: 14px;
             color: #495057;
             text-align: center;
-            /* السطور دي بتخلي النص الطويل يتقص ويتحط آخره 3 نقط */
             display: -webkit-box;
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden;
             word-break: break-word;
-            pointer-events: none; /* عشان الكليك تيجي ع المربع نفسه */
+            pointer-events: none; 
         }
         
-        /* زرار الحذف الصغير */
         .delete-btn {
             position: absolute;
             top: 5px;
@@ -98,14 +95,13 @@
             text-align: center;
             cursor: pointer;
             padding: 0;
-            display: none; /* مخفي وبيظهر لما تقف عليه بالماوس */
+            display: none; 
         }
         .clip-item:hover .delete-btn { display: block; }
         .delete-btn:hover { background-color: #dc3545; }
 
         .btn-logout { background-color: #6c757d; margin-top: 30px; }
 
-        /* رسالة النسخ (Toast) */
         #toast {
             visibility: hidden;
             min-width: 200px;
@@ -135,14 +131,12 @@
 </head>
 <body>
 
-    <!-- شاشة الدخول -->
     <div class="container" id="login-screen">
         <h2>أهلاً بيك في الـ Clipboard بتاعتك</h2>
         <input type="password" id="password-input" placeholder="اكتب الباسوورد (رقم سري للغرفة)...">
         <button class="main-btn" onclick="login()">افتح الحافظة</button>
     </div>
 
-    <!-- شاشة المحفظة -->
     <div class="container" id="app-screen">
         <h2 style="font-size: 18px; color: #666; text-align: right; margin-bottom: 20px;">
             غرفة: <span id="current-room-name" style="color: #007bff;"></span>
@@ -151,7 +145,6 @@
         <textarea id="new-item-text" rows="2" placeholder="اكتب أو انسخ هنا أي حاجة عايز تحفظها..."></textarea>
         <button class="main-btn" onclick="addNewItem()">+ حفظ في الحافظة</button>
 
-        <!-- شبكة الكروت (الـ Clipboard) -->
         <div class="clipboard-grid" id="items-container">
             <!-- الكروت هتترص هنا -->
         </div>
@@ -159,11 +152,10 @@
         <button class="main-btn btn-logout" onclick="logout()">قفل الغرفة</button>
     </div>
 
-    <!-- رسالة النسخ -->
     <div id="toast">تم النسخ بنجاح! ✓</div>
 
     <script>
-        // إعدادات Firebase بتاعتك زي ما هي
+        // إعدادات Firebase بتاعتك
         const firebaseConfig = {
             apiKey: "AIzaSyBtIkF-UhkeFa-cxutgJAQpR7K_IjKxloc",
             authDomain: "spygame-337ee.firebaseapp.com",
@@ -188,10 +180,13 @@
             document.getElementById('current-room-name').innerText = "*".repeat(currentPassword.length);
             document.getElementById('password-input').value = '';
 
+            // صائد أخطاء القراءة
             db.ref('clipboards/' + currentPassword).on('value', (snapshot) => {
                 const data = snapshot.val();
                 localItems = data ? data : []; 
                 renderItems();
+            }, (error) => {
+                alert("فيه مشكلة في قراءة البيانات من فايربيز!\nالسبب: " + error.message);
             });
         }
 
@@ -207,14 +202,12 @@
             localItems.forEach((itemText, index) => {
                 const div = document.createElement('div');
                 div.className = 'clip-item';
-                // لما تدوس على المربع نفسه يعمل نسخ
                 div.onclick = () => copyItem(index);
                 
                 div.innerHTML = `
                     <p>${escapeHTML(itemText)}</p>
                     <button class="delete-btn" onclick="deleteItem(event, ${index})" title="حذف">✕</button>
                 `;
-                // إضافة العنصر الجديد في الأول عشان يظهر كأول مربع
                 container.prepend(div);
             });
         }
@@ -225,8 +218,21 @@
             if (!text) return;
 
             localItems.push(text);
-            db.ref('clipboards/' + currentPassword).set(localItems);
-            textInput.value = '';
+            
+            // صائد أخطاء الكتابة (الحفظ)
+            db.ref('clipboards/' + currentPassword).set(localItems)
+                .then(() => {
+                    // لو الداتا اترفع بنجاح الخانة هتفضى
+                    textInput.value = '';
+                })
+                .catch((error) => {
+                    // لو فايربيز رفض، هيطلع الرسالة دي
+                    alert("للأسف فايربيز رفض يحفظ! \nالسبب: " + error.message);
+                    
+                    // هنحذف النص من الشاشة قدامك عشان متفتكرش إنه اتحفظ
+                    localItems.pop();
+                    renderItems();
+                });
         }
 
         function copyItem(index) {
@@ -237,12 +243,19 @@
         }
 
         function deleteItem(event, index) {
-            // السطر ده عشان لما تدوس على علامة الحذف، ما يعملش "نسخ" بالمرة
             event.stopPropagation();
-            
             if (confirm("متأكد إنك عايز تحذف النص ده؟")) {
+                const itemToDelete = localItems[index];
                 localItems.splice(index, 1);
-                db.ref('clipboards/' + currentPassword).set(localItems);
+                
+                // صائد أخطاء الحذف
+                db.ref('clipboards/' + currentPassword).set(localItems)
+                    .catch((error) => {
+                        alert("فايربيز رفض الحذف! \nالسبب: " + error.message);
+                        // نرجع العنصر تاني لو الحذف فشل
+                        localItems.splice(index, 0, itemToDelete);
+                        renderItems();
+                    });
             }
         }
 
@@ -268,3 +281,4 @@
     </script>
 </body>
 </html>
+

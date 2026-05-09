@@ -1,6 +1,4 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
+<html lang="ar" dir="rtl"><head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>محفظة النصوص - Clipboard</title>
@@ -35,7 +33,7 @@
 <body>
 
     <div class="container" id="login-screen">
-        <h2>أهلاً بيك في الـ Clipboard بتاعتك</h2>
+        <h2>أهلاً بيك في الـ Clipboard </h2>
         <input type="password" id="password-input" placeholder="اكتب الباسوورد (رقم سري للغرفة)...">
         <button class="main-btn" onclick="login()">افتح الحافظة</button>
     </div>
@@ -64,7 +62,6 @@
             storageBucket: "spygame-337ee.firebasestorage.app"
         };
 
-        // تعريف فايربيز مع حماية ضد المتصفح الخفي
         let db;
         try {
             if (typeof firebase !== 'undefined') {
@@ -76,12 +73,17 @@
         }
 
         let currentPassword = '';
+        let safeRoomPath = ''; // متغير جديد عشان يحفظ المسار الآمن
         let localItems = [];
 
+        // دالة تشفير الباسوورد عشان فايربيز ميطلّعش أخطاء الرموز
+        function getSafePath(pass) {
+            return encodeURIComponent(pass).replace(/\./g, '%2E');
+        }
+
         function login() {
-            // لو المتصفح مانع فايربيز، هيقولك
             if (typeof firebase === 'undefined' || !db) {
-                alert("تحذير هام: المتصفح الخفي (Private) اللي إنت فاتحه مانع قاعدة البيانات إنها تشتغل! \nمن فضلك افتح اللينك في نافذة عادية عشان الزراير تستجيب.");
+                alert("تحذير هام: المتصفح الخفي (Private) مانع قاعدة البيانات إنها تشتغل! \nمن فضلك افتح اللينك في نافذة عادية.");
                 return;
             }
 
@@ -89,15 +91,17 @@
             if (!passInput) return;
 
             currentPassword = passInput;
+            safeRoomPath = getSafePath(currentPassword); // تشفير الباسوورد هنا
+
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('app-screen').style.display = 'block';
             document.getElementById('current-room-name').innerText = "*".repeat(currentPassword.length);
             document.getElementById('password-input').value = '';
 
             try {
-                db.ref('clipboards/' + currentPassword).on('value', (snapshot) => {
+                // استخدام المسار الآمن المشفر
+                db.ref('clipboards/' + safeRoomPath).on('value', (snapshot) => {
                     const data = snapshot.val();
-                    // حماية البيانات وتحويلها لـ Array لو فايربيز بوظها
                     if (data) {
                         localItems = Array.isArray(data) ? data : Object.values(data);
                     } else {
@@ -166,7 +170,7 @@
 
                 localItems.push({ text: text, pinned: false });
                 
-                db.ref('clipboards/' + currentPassword).set(localItems)
+                db.ref('clipboards/' + safeRoomPath).set(localItems)
                     .then(() => { textInput.value = ''; })
                     .catch((error) => {
                         alert("فايربيز رفض يحفظ! \nالسبب: " + error.message);
@@ -187,7 +191,7 @@
                 } else {
                     localItems[index].pinned = !localItems[index].pinned;
                 }
-                db.ref('clipboards/' + currentPassword).set(localItems);
+                db.ref('clipboards/' + safeRoomPath).set(localItems);
             } catch(e) {}
         }
 
@@ -204,7 +208,7 @@
                     } else {
                         localItems[index].text = newText.trim();
                     }
-                    db.ref('clipboards/' + currentPassword).set(localItems);
+                    db.ref('clipboards/' + safeRoomPath).set(localItems);
                 }
             } catch(e) {}
         }
@@ -216,7 +220,7 @@
                     const itemToDelete = localItems[index];
                     localItems.splice(index, 1);
                     
-                    db.ref('clipboards/' + currentPassword).set(localItems)
+                    db.ref('clipboards/' + safeRoomPath).set(localItems)
                         .catch((error) => {
                             alert("فايربيز رفض الحذف! \nالسبب: " + error.message);
                             localItems.splice(index, 0, itemToDelete);
@@ -243,8 +247,9 @@
         }
 
         function logout() {
-            if(db) db.ref('clipboards/' + currentPassword).off(); 
+            if(db) db.ref('clipboards/' + safeRoomPath).off(); 
             currentPassword = '';
+            safeRoomPath = '';
             localItems = [];
             document.getElementById('app-screen').style.display = 'none';
             document.getElementById('login-screen').style.display = 'block';
@@ -257,5 +262,5 @@
             );
         }
     </script>
-</body>
-</html>
+
+</body></html>
